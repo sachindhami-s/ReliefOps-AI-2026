@@ -1,0 +1,14 @@
+# ReliefOps AI — Production & Academic Requirements
+# Course: CSE476 — Agentic AI and Intelligent Automation
+
+streamlit>=1.35.0
+pydantic>=2.0.0
+numpy>=1.26.0
+pandas>=2.2.0
+pydeck>=0.8.0
+reportlab>=4.0.0
+python-dotenv>=1.0.0
+semantic-kernel>=1.0.0
+chromadb>=0.4.20
+pytest>=7.4.0
+

@@ -1,0 +1,81 @@
+
+# ==========================================
+# PYTHON CACHE & COMPILED FILES
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ==========================================
+# VIRTUAL ENVIRONMENTS
+# ==========================================
+.venv/
+venv/
+env/
+ENV/
+
+# ==========================================
+# PYTHON BUILD ARTIFACTS
+# ==========================================
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==========================================
+# ENVIRONMENT VARIABLES & SECRETS
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# STREAMLIT SECRETS
+# ==========================================
+.streamlit/secrets.toml
+.streamlit/credentials.toml
+
+# ==========================================
+# DATABASE TEMPORARY FILES
+# ==========================================
+data/chromadb/
+*.db-wal
+*.db-shm
+*.db-journal
+
+
+# SQLite databases and runtime files
+data/*.db
+data/*.db-*
+data/backup_*/
+
+# ChromaDB generated storage
+data/chromadb/
+
+# ==========================================
+# TESTING & COVERAGE
+# ==========================================
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# LOGS & TEMPORARY FILES
+# ==========================================
+*.log
+*.tmp
+*.bak
+
+# ==========================================
+# IDE & OPERATING SYSTEM
+# ==========================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
