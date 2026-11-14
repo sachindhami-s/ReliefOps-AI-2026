@@ -79,3 +79,6 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Generated vector database
+data/chromadb/
