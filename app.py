@@ -865,7 +865,7 @@ if "plan_result" in st.session_state and st.session_state.get("plan_result"):
             st.markdown(
                 f"""
                 - **Resource Adequacy Status:** `{adequacy_status}`
-                - **Overall Plan Status:** `{overall_status}`
+                - **Overall Audit Verdict:** `{audit_data.get('audit_verdict', overall_status)}`
                 - **Auditor Summary:** {audit_data.get('explanation', 'None')}
                 """
             )
@@ -886,11 +886,13 @@ if "plan_result" in st.session_state and st.session_state.get("plan_result"):
                         {
                             "Zone": s.get("zone_name"),
                             "ZPS": f"{s.get('zps', 0.0):.2f}",
+                            "Pop": f"{s.get('population', 0):,}",
                             "Food %": f"{rc.get('FOOD_RATIONS', 1.0) * 100.0:.1f}%",
                             "Water %": f"{rc.get('CLEAN_WATER', 1.0) * 100.0:.1f}%",
                             "Tents %": f"{rc.get('SHELTER_TENTS', 1.0) * 100.0:.1f}%",
                             "Medical %": f"{rc.get('MEDICAL_KITS', 1.0) * 100.0:.1f}%" if "MEDICAL_KITS" in rc else "N/A (0 req)",
-                            "Overall Unit Coverage %": f"{s.get('coverage_ratio', 0.0) * 100.0:.1f}%",
+                            "Coverage %": f"{s.get('coverage_ratio', 0.0) * 100.0:.1f}%",
+                            "Priority Rationale": s.get("priority_explanation", "Standard weighting"),
                         }
                     )
                 st.dataframe(pd.DataFrame(zone_cov_rows), width="stretch", hide_index=True)
@@ -902,6 +904,42 @@ if "plan_result" in st.session_state and st.session_state.get("plan_result"):
                     }
                 ).set_index("Zone")
                 st.bar_chart(cov_df)
+
+        # ---------------------------------------------------------------------
+        # Resource-Wise Adequacy Table & Shortage Indicators
+        # ---------------------------------------------------------------------
+        st.markdown("##### 📦 Resource Adequacy Analysis (Demand Fulfilment & Critical Shortages)")
+        res_adeq = audit_data.get("resource_adequacy", {})
+        if res_adeq:
+            adeq_rows = []
+            for rtype, rinfo in res_adeq.items():
+                f_pct = rinfo.get("fulfillment_pct", 100.0)
+                s_pct = rinfo.get("shortage_pct", 0.0)
+                st_val = rinfo.get("status", "ADEQUATE")
+                st_badge = "🟢 Adequate" if st_val == "ADEQUATE" else ("🔴 Critical Shortage" if st_val == "CRITICAL_SHORTAGE" else "🟡 Shortage")
+                adeq_rows.append({
+                    "Resource Category": rtype,
+                    "Requested Qty": f"{rinfo.get('demanded', 0):,}",
+                    "Available Stock": f"{rinfo.get('available', 0):,}",
+                    "Allocated Qty": f"{rinfo.get('allocated', 0):,}",
+                    "Fulfilled Qty": f"{rinfo.get('fulfilled_qty', 0):,}",
+                    "Unfulfilled Qty": f"{rinfo.get('unfulfilled_qty', 0):,}",
+                    "Fulfilment %": f"{f_pct:.1f}%",
+                    "Shortage %": f"{s_pct:.1f}%",
+                    "Adequacy Status": st_badge,
+                })
+            st.dataframe(pd.DataFrame(adeq_rows), width="stretch", hide_index=True)
+
+        crit_alerts = audit_data.get("critical_shortage_alerts", [])
+        if crit_alerts:
+            for ca in crit_alerts:
+                st.error(ca)
+
+        recs = audit_data.get("recommendations", [])
+        if recs:
+            with st.expander("💡 Actionable Recommendations for Improving Allocation", expanded=False):
+                for rec in recs:
+                    st.markdown(f"- {rec}")
 
         # ---------------------------------------------------------------------
         # SCEN-05 Benchmark: Two-Phase Water-Filling vs. Naive Greedy Optimization

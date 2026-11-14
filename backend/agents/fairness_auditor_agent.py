@@ -1,7 +1,9 @@
 """
 ReliefOps AI — Fairness Auditor Agent
-Specialized agent responsible for verifying distributive justice, auditing Gini inequality,
-enforcing the zero-allocation ban, evaluating resource adequacy, and persisting audit records to SQLite.
+Advanced Distributive Justice and Resource Adequacy Auditing Agent.
+Audits allocation plans for Gini coefficient equity, zero-allocation bans,
+vulnerability prioritisation, resource fulfillment & shortage percentages,
+and writes explainable audit reports to the Blackboard and SQLite database.
 
 Academic Disclaimer:
 Synthetic demonstration agent developed exclusively for CSE476 (Agentic AI and Intelligent Automation).
@@ -18,9 +20,10 @@ from backend.plugins.fairness_plugin import FairnessPlugin
 
 class FairnessAuditorAgent(BaseAgent):
     """
-    Fairness Auditor Agent for ReliefOps AI.
+    Advanced Fairness & Resource Adequacy Auditor Agent for ReliefOps AI.
     Inherits from BaseAgent, integrates with Microsoft Semantic Kernel and FairnessPlugin,
-    evaluates allocation equity and resource adequacy, and writes audit reports to the Blackboard.
+    evaluates distributive equity, vulnerability prioritisation, and resource adequacy,
+    and writes explainable audit reports to the Blackboard and SQLite database.
     """
 
     def __init__(
@@ -30,13 +33,108 @@ class FairnessAuditorAgent(BaseAgent):
         blackboard: Optional[Any] = None,
         plugin: Optional[FairnessPlugin] = None,
         db: Optional[DatabaseManager] = None,
+        gini_threshold: float = 0.35,
     ):
         super().__init__(name=name, kernel=kernel, blackboard=blackboard)
-        self.plugin = plugin or FairnessPlugin()
-        self._db = db or default_db_manager
+        self.gini_threshold: float = float(gini_threshold)
+        self.plugin: FairnessPlugin = plugin or FairnessPlugin(gini_threshold=self.gini_threshold)
+        self._db: DatabaseManager = db or default_db_manager
 
         if "Fairness" not in self.kernel.plugins:
             self.kernel.add_plugin(self.plugin, plugin_name="Fairness")
+
+    def evaluate_verdict(
+        self,
+        fairness_approved: bool,
+        has_shortages: bool,
+        is_complete_shortage: bool = False,
+    ) -> str:
+        """
+        Verdict Engine evaluator:
+        Produces one of: FAIRNESS_APPROVED, RESOURCE_SHORTAGE, APPROVED_WITH_SHORTAGES, REJECTED.
+        """
+        return self.plugin.determine_verdict(
+            fairness_approved=fairness_approved,
+            has_shortages=has_shortages,
+            is_complete_shortage=is_complete_shortage,
+        )
+
+    def audit(
+        self,
+        allocations: Any,
+        zone_demands: Any,
+        inventory_snapshot: Optional[Any] = None,
+        gini_threshold: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Direct programmatic auditing method for allocation equity and resource adequacy.
+        """
+        threshold = gini_threshold if gini_threshold is not None else self.gini_threshold
+        raw_res = self.plugin.audit_allocation_equity(
+            allocations_json=allocations,
+            zone_demands_json=zone_demands,
+            inventory_snapshot_json=inventory_snapshot,
+            gini_threshold=threshold,
+        )
+        return json.loads(raw_res) if isinstance(raw_res, str) else raw_res
+
+    def generate_explainable_report(self, audit_result: Dict[str, Any]) -> str:
+        """
+        Generates a human-readable, structured Markdown audit report.
+        """
+        verdict = audit_result.get("audit_verdict") or audit_result.get("overall_status", "UNKNOWN")
+        gini = audit_result.get("gini_coefficient", 0.0)
+        threshold = audit_result.get("gini_threshold", self.gini_threshold)
+        min_cov = audit_result.get("min_coverage_ratio", 0.0)
+
+        lines = [
+            f"# ReliefOps AI — Explainable Distributive Justice & Adequacy Report",
+            f"**Audit Verdict:** `{verdict}` | **Gini Coefficient:** `{gini:.4f}` (Threshold: `{threshold:.2f}`)",
+            f"**Minimum Zone Coverage:** `{min_cov:.1%}`",
+            "",
+            "## 1. Executive Summary",
+            audit_result.get("explanation", "No explanation available."),
+            "",
+            "## 2. Resource-Wise Adequacy Analysis",
+            "| Resource | Requested | Available Stock | Allocated | Fulfilled | Unfulfilled | Fulfilment % | Shortage % | Status |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+        ]
+
+        res_adeq = audit_result.get("resource_adequacy", {})
+        for rtype, info in res_adeq.items():
+            lines.append(
+                f"| **{rtype}** | {info.get('demanded', 0):,} | {info.get('available', 0):,} | "
+                f"{info.get('allocated', 0):,} | {info.get('fulfilled_qty', 0):,} | {info.get('unfulfilled_qty', 0):,} | "
+                f"{info.get('fulfillment_pct', 0.0):.1f}% | {info.get('shortage_pct', 0.0):.1f}% | `{info.get('status', 'UNKNOWN')}` |"
+            )
+
+        lines.extend([
+            "",
+            "## 3. Zone-Wise Distributive Fairness Analysis",
+            "| Zone | Population | ZPS Score | Total Demanded | Total Allocated | Coverage % | Priority Rationale |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+        ])
+
+        for z in audit_result.get("zone_summaries", []):
+            lines.append(
+                f"| **{z.get('zone_name')}** | {z.get('population', 0):,} | {z.get('zps', 0.0):.1f} | "
+                f"{z.get('total_demanded', 0):,} | {z.get('total_allocated', 0):,} | "
+                f"{z.get('coverage_ratio', 0.0):.1%} | {z.get('priority_explanation', 'N/A')} |"
+            )
+
+        crit_alerts = audit_result.get("critical_shortage_alerts", [])
+        if crit_alerts:
+            lines.extend(["", "## 4. Critical Shortage Alerts"])
+            for ca in crit_alerts:
+                lines.append(f"- {ca}")
+
+        recs = audit_result.get("recommendations", [])
+        if recs:
+            lines.extend(["", "## 5. Actionable Recommendations"])
+            for rec in recs:
+                lines.append(f"- 💡 {rec}")
+
+        return "\n".join(lines)
 
     def execute(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -51,50 +149,50 @@ class FairnessAuditorAgent(BaseAgent):
 
         if not allocation_draft or not zone_needs:
             self.log("Missing allocation draft or zone needs; audit cannot proceed.", level="WARNING")
-            audit_res = {
-                "verdict": "REJECTED",
-                "fairness_verdict": "FAIRNESS_REJECTED",
-                "adequacy_status": "RESOURCE_SHORTAGE",
-                "overall_status": "REJECTED",
-                "gini_coefficient": 1.0,
-                "min_coverage_ratio": 0.0,
-                "violations": ["Missing allocation draft or zone needs."],
-                "shortage_resources": [],
-                "shortage_warnings": [],
-                "resource_adequacy": {},
-                "explanation": "Insufficient data to audit allocation equity.",
-            }
+            audit_res = self.audit(
+                allocations=None,
+                zone_demands=None,
+                inventory_snapshot=None,
+            )
             self.write_section("audit_verdict", audit_res)
             return {"status": "SUCCESS", "audit_verdict": audit_res}
 
-        dispatches = allocation_draft.get("dispatches", allocation_draft) if isinstance(allocation_draft, dict) else allocation_draft
+        dispatches = (
+            allocation_draft.get("dispatches", allocation_draft)
+            if isinstance(allocation_draft, dict)
+            else allocation_draft
+        )
 
         # 2. Audit via FairnessPlugin
-        audit_raw = self.plugin.audit_allocation_equity(
-            allocations_json=dispatches,
-            zone_demands_json=zone_needs,
-            inventory_snapshot_json=inventory_snapshot,
+        audit_res = self.audit(
+            allocations=dispatches,
+            zone_demands=zone_needs,
+            inventory_snapshot=inventory_snapshot,
+            gini_threshold=self.gini_threshold,
         )
-        audit_res = json.loads(audit_raw) if isinstance(audit_raw, str) else audit_raw
 
         verdict = audit_res.get("verdict", "REJECTED")
+        audit_verdict = audit_res.get("audit_verdict", "REJECTED")
         fairness_verdict = audit_res.get("fairness_verdict", "FAIRNESS_REJECTED")
         adequacy_status = audit_res.get("adequacy_status", "RESOURCE_ADEQUATE")
-        overall_status = audit_res.get("overall_status", "REJECTED")
         gini = audit_res.get("gini_coefficient", 0.0)
         min_cov = audit_res.get("min_coverage_ratio", 0.0)
         violations = audit_res.get("violations", [])
         shortage_warnings = audit_res.get("shortage_warnings", [])
         explanation = audit_res.get("explanation", "")
 
-        # 3. Write to Blackboard
+        # 3. Write structured audit verdict to Blackboard
         self.write_section("audit_verdict", audit_res)
 
         # 4. Persist to SQLite audit_logs table (fail-safe)
         # Note: audit_logs.verdict CHECK constraint allows ('APPROVED', 'REJECTED', 'WARNING_OVERRIDDEN')
         db_verdict = "APPROVED" if verdict == "APPROVED" else "REJECTED"
         try:
-            plan_id = allocation_draft.get("plan_id", "PLAN-ACTIVE") if isinstance(allocation_draft, dict) else "PLAN-ACTIVE"
+            plan_id = (
+                allocation_draft.get("plan_id", "PLAN-ACTIVE")
+                if isinstance(allocation_draft, dict)
+                else "PLAN-ACTIVE"
+            )
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()
             combined_issues = violations + shortage_warnings
             self._db.execute_non_query(
@@ -117,8 +215,8 @@ class FairnessAuditorAgent(BaseAgent):
             self.log(f"Could not persist audit record to database: {exc}", level="WARNING")
 
         self.log(
-            f"Audit finished: Fairness={fairness_verdict}, Adequacy={adequacy_status}, Overall={overall_status}, "
-            f"Gini={gini:.4f} (threshold={self.plugin.GINI_THRESHOLD}), "
+            f"Audit finished: Verdict={audit_verdict}, Fairness={fairness_verdict}, Adequacy={adequacy_status}, "
+            f"Gini={gini:.4f} (threshold={self.gini_threshold}), "
             f"Min Coverage={min_cov:.1%}, Violations={len(violations)}."
         )
 
