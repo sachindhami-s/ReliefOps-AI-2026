@@ -317,10 +317,11 @@ class FairnessPlugin:
                     else max(totals["available"], alloc_total)
                 )
                 fulfilled = min(req_total, alloc_total)
-                unfulfilled = max(0, req_total - alloc_total)
+                unfulfilled = max(0, req_total - fulfilled)
+                surplus = max(0, avail_total - fulfilled)
 
-                # Standard Formula: Fulfilment % = (Allocated / Requested) * 100
-                fulfill_pct = round((alloc_total / req_total * 100.0), 1) if req_total > 0 else 100.0
+                # Standard Formula: Fulfilment % = (Allocated / Demanded) * 100, capped at 100%
+                fulfill_pct = round(min(100.0, (fulfilled / req_total * 100.0)), 1) if req_total > 0 else 100.0
                 shortage_pct = round((unfulfilled / req_total * 100.0), 1) if req_total > 0 else 0.0
 
                 if req_total > 0 and unfulfilled > 0:
@@ -349,6 +350,7 @@ class FairnessPlugin:
                     "allocated": alloc_total,
                     "fulfilled_qty": fulfilled,
                     "unfulfilled_qty": unfulfilled,
+                    "surplus_qty": surplus,
                     "fulfillment_pct": fulfill_pct,
                     "shortage_pct": shortage_pct,
                     "status": res_status,

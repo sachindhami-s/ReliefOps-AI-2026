@@ -1,0 +1,73 @@
+# =============================================================================
+# ReliefOps AI — Docker Build Context Ignore Rules
+# Excludes virtual environments, secrets, local runtime databases, backups,
+# caches, and IDE artifacts while preserving source code and SOP definitions.
+# =============================================================================
+
+# Version Control
+.git/
+.gitignore
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python Bytecode & Build Caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Test & Coverage Caches
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment Variables & Secrets (Preserve .env.example template)
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+.streamlit/credentials.toml
+
+# Local SQLite Databases, WAL/SHM Files, Backups & ChromaDB Runtime State
+backups/
+data/backups/
+data/backup_*/
+data/*.db
+data/*.db-*
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+data/chromadb/
+
+# Explicitly allow authoritative SOP markdown definitions inside data/sops/
+!data/sops/
+!data/sops/*.md
+
+# Logs & Temporary Artifacts
+logs/
+*.log
+*.tmp
+*.bak
+*.swp
+
+# IDE & OS Metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

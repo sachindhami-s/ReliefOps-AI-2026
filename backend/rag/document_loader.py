@@ -44,7 +44,11 @@ class SOPDocumentLoader:
     def __init__(self, sops_dir: Optional[str] = None):
         if sops_dir is None:
             base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            sops_dir = os.path.join(base_dir, "data", "sops")
+            env_path = os.getenv("SOP_DIR", "").strip()
+            if env_path:
+                sops_dir = env_path if os.path.isabs(env_path) else os.path.join(base_dir, env_path)
+            else:
+                sops_dir = os.path.join(base_dir, "data", "sops")
         self.sops_dir = os.path.abspath(sops_dir)
 
     def parse_frontmatter(self, text: str) -> Tuple[Dict[str, str], str]:

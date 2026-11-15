@@ -98,22 +98,27 @@ class InventoryAgent(BaseAgent):
         for rtype in total_available:
             avail = total_available[rtype]
             req = total_demanded[rtype]
-            shortage_qty = max(0, req - avail)
-            surplus_qty = max(0, avail - req)
-            cov_pct = round((avail / req * 100.0), 1) if req > 0 else 100.0
-            if req > 0 and avail < req:
-                status = "CRITICAL_SHORTAGE" if cov_pct < 50.0 else "SHORTAGE"
+            allocated = min(avail, req)
+            unfulfilled_qty = max(0, req - allocated)
+            shortage_qty = unfulfilled_qty
+            surplus_qty = max(0, avail - allocated)
+            fulfillment_pct = round(min(100.0, (allocated / req * 100.0)), 1) if req > 0 else 100.0
+            if req > 0 and unfulfilled_qty > 0:
+                status = "CRITICAL_SHORTAGE" if fulfillment_pct < 50.0 else "SHORTAGE"
                 shortage_resources.append(rtype)
             else:
                 status = "ADEQUATE"
 
             feasibility[rtype] = {
-                "available": avail,
                 "demanded": req,
-                "surplus_deficit": avail - req,
+                "available": avail,
+                "allocated": allocated,
+                "fulfillment_pct": fulfillment_pct,
+                "coverage_pct": fulfillment_pct,
+                "unfulfilled_qty": unfulfilled_qty,
                 "shortage_qty": shortage_qty,
                 "surplus_qty": surplus_qty,
-                "coverage_pct": cov_pct,
+                "surplus_deficit": avail - req,
                 "status": status,
             }
 

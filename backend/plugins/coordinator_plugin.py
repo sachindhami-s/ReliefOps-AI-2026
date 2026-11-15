@@ -122,6 +122,7 @@ class CoordinatorPlugin:
                         "demanded": 0,
                         "allocated": 0,
                         "unfulfilled_qty": 0,
+                        "surplus_qty": total_available,
                         "fulfillment_pct": 100.0,
                         "status": "ADEQUATE",
                     }
@@ -157,6 +158,7 @@ class CoordinatorPlugin:
                         "demanded": total_demanded,
                         "allocated": 0,
                         "unfulfilled_qty": total_demanded,
+                        "surplus_qty": 0,
                         "fulfillment_pct": 0.0,
                         "status": "CRITICAL_SHORTAGE",
                     }
@@ -331,8 +333,10 @@ class CoordinatorPlugin:
                             }
                         )
 
-                unfulfilled_total = max(0, total_demanded - total_allocated_for_resource)
-                fulfillment_pct = round((total_allocated_for_resource / total_demanded * 100.0), 1) if total_demanded > 0 else 100.0
+                allocated_capped = min(total_demanded, total_allocated_for_resource)
+                unfulfilled_total = max(0, total_demanded - allocated_capped)
+                surplus_total = max(0, total_available - allocated_capped)
+                fulfillment_pct = round(min(100.0, (allocated_capped / total_demanded * 100.0)), 1) if total_demanded > 0 else 100.0
                 if unfulfilled_total == 0:
                     res_status = "ADEQUATE"
                 elif fulfillment_pct < 50.0:
@@ -344,8 +348,9 @@ class CoordinatorPlugin:
                     "resource_type": rtype,
                     "available": total_available,
                     "demanded": total_demanded,
-                    "allocated": total_allocated_for_resource,
+                    "allocated": allocated_capped,
                     "unfulfilled_qty": unfulfilled_total,
+                    "surplus_qty": surplus_total,
                     "fulfillment_pct": fulfillment_pct,
                     "status": res_status,
                 }

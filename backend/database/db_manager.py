@@ -98,6 +98,47 @@ class DatabaseManager:
             cursor.execute("ROLLBACK;")
             raise
 
+    def backup_database(self, target_path: Optional[str] = None) -> str:
+        """
+        Creates a hot, online backup of the SQLite database using SQLite's native backup API.
+        Thread-safe, WAL-safe, and page-consistent even under active concurrent writes.
+        """
+        import datetime
+        if target_path is None:
+            timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+            backup_dir = os.path.join(os.path.dirname(self.db_path), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            target_path = os.path.join(backup_dir, f"reliefops_backup_{timestamp}.db")
+
+        target_path = os.path.abspath(target_path)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+
+        source_conn = self.get_connection()
+        target_conn = sqlite3.connect(target_path)
+        try:
+            with self._lock:
+                source_conn.backup(target_conn)
+        finally:
+            target_conn.close()
+
+        return target_path
+
+    def restore_database(self, backup_path: str) -> None:
+        """
+        Restores the database from a verified backup file using SQLite's native backup API.
+        """
+        backup_path = os.path.abspath(backup_path)
+        if not os.path.isfile(backup_path):
+            raise FileNotFoundError(f"Backup file not found: {backup_path}")
+
+        source_conn = sqlite3.connect(backup_path)
+        dest_conn = self.get_connection()
+        try:
+            with self._lock:
+                source_conn.backup(dest_conn)
+        finally:
+            source_conn.close()
+
     def close(self) -> None:
         """Closes the current thread's connection."""
         if hasattr(self._local, "conn") and self._local.conn is not None:

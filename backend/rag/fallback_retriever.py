@@ -97,8 +97,10 @@ class BM25Retriever:
 
         for idx, tf in enumerate(self.term_freqs):
             chunk = self.chunks[idx]
-            if category_filter and chunk.category.lower() != category_filter.lower():
-                continue
+            if category_filter and category_filter.upper() != "ALL":
+                cf_low = category_filter.lower()
+                if chunk.category.lower() != cf_low and chunk.hazard_type.lower() != cf_low:
+                    continue
 
             score = 0.0
             doc_len = self.doc_len[idx]

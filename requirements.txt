@@ -1,14 +1,28 @@
-# ReliefOps AI — Production & Academic Requirements
+# =============================================================================
+# ReliefOps AI — Production & Academic Requirements Specification
 # Course: CSE476 — Agentic AI and Intelligent Automation
+# =============================================================================
 
+# Core Web Dashboard & Interactive Visualizations
 streamlit>=1.35.0
-pydantic>=2.0.0
+altair>=5.0.0
+pydeck>=0.8.0
+
+# Mathematical Modeling, Data Structures & Validation
 numpy>=1.26.0
 pandas>=2.2.0
-pydeck>=0.8.0
+pydantic>=2.0.0
+
+# Document & Audit Reporting
 reportlab>=4.0.0
+
+# Configuration & Environment Management
 python-dotenv>=1.0.0
+
+# Multi-Agent Coordination & Semantic RAG Vector Storage
 semantic-kernel>=1.0.0
 chromadb>=0.4.20
-pytest>=7.4.0
 
+# Automated Verification & Stress Testing Framework
+pytest>=7.4.0
+pytest-asyncio>=0.23.0

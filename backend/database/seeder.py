@@ -21,23 +21,29 @@ def seed_database(db: Optional[DatabaseManager] = None) -> None:
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    # 1. Seed Disaster Event
-    db.execute_non_query(
-        """
-        INSERT OR REPLACE INTO disaster_events 
-        (event_id, name, disaster_type, severity_level, reported_at, status, total_affected_pop)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            "EVT-2026-FL01",
-            "Brahmaputra Valley Catastrophic Monsoon Flood",
-            "FLOOD",
-            "SEVERE",
-            now,
-            "ACTIVE",
-            332000
+    # 1. Seed Disaster Events across canonical hazard types
+    events = [
+        ("EVT-2026-FL01", "Brahmaputra Valley Catastrophic Monsoon Flood", "FLOOD", "SEVERE", now, "ACTIVE", 332000),
+        ("EVT-2026-EQ01", "Assam-Arunachal Seismic Zone High-Magnitude Earthquake", "EARTHQUAKE", "SEVERE", now, "ACTIVE", 248000),
+        ("EVT-2026-CY01", "Bay of Bengal Severe Tropical Cyclone & Storm Surge", "CYCLONE", "SEVERE", now, "ACTIVE", 210000),
+        ("EVT-2026-LS01", "Himalayan Ridge Multi-Sector Mountain Landslide & Blockade", "LANDSLIDE", "SEVERE", now, "ACTIVE", 145000),
+    ]
+
+    for ev in events:
+        db.execute_non_query(
+            """
+            INSERT INTO disaster_events
+            (event_id, name, disaster_type, severity_level, reported_at, status, total_affected_pop)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(event_id) DO UPDATE SET
+                name=excluded.name,
+                disaster_type=excluded.disaster_type,
+                severity_level=excluded.severity_level,
+                status=excluded.status,
+                total_affected_pop=excluded.total_affected_pop
+            """,
+            ev,
         )
-    )
 
     # 2. Seed Affected Zones
     zones = [
@@ -161,8 +167,8 @@ def seed_database(db: Optional[DatabaseManager] = None) -> None:
         ),
         (
             "SCEN-03",
-            "Infrastructure Collapse & Logistics Blockade",
-            "Primary river crossing bridge washed away; road access into Zone 4 (Dhemaji) is BLOCKED. Tests Logistics Agent rerouting and aerial delivery flag.",
+            "Bay of Bengal Tropical Cyclone & Logistics Blockade",
+            "Primary river crossing bridge washed away during severe cyclone surge; road access into Zone 4 (Dhemaji) is BLOCKED. Tests Logistics Agent rerouting and aerial delivery flag.",
             "LOGISTICS_FAILURE",
             json.dumps({
                 "zones": ["ZONE-DHEMAJI-PERIPHERY", "ZONE-MAJULI-ISLAND", "ZONE-DIBRUGARH-URBAN"],
@@ -173,8 +179,8 @@ def seed_database(db: Optional[DatabaseManager] = None) -> None:
         ),
         (
             "SCEN-04",
-            "Mid-Run Dynamic Re-Planning (Secondary Surge)",
-            "A catastrophic embankment breach surges into Zone 3 mid-run, doubling its population and damage score. Demonstrates blackboard state invalidation, dynamic re-planning, and plan diff analysis.",
+            "Himalayan Ridge Landslide & Mid-Run Dynamic Re-Planning (Secondary Surge)",
+            "A catastrophic slope failure and embankment breach surges into Zone 3 mid-run, doubling its population and damage score. Demonstrates blackboard state invalidation, dynamic re-planning, and plan diff analysis.",
             "DYNAMIC_REPLAN",
             json.dumps({
                 "initial_zones": ["ZONE-MAJULI-ISLAND", "ZONE-KAZIRANGA-RURAL", "ZONE-NAGAON-CENTRAL"],
@@ -255,7 +261,13 @@ def build_scenario_context(
         surge_damage = None
         surge_pop_mult = None
 
-    # Determine hazard type from title
+    # Determine canonical hazard type from scenario_id or title
+    canonical_scenario_hazards = {
+        "SCEN-01": "FLOOD",
+        "SCEN-02": "EARTHQUAKE",
+        "SCEN-03": "CYCLONE",
+        "SCEN-04": "LANDSLIDE",
+    }
     title_upper = title.upper()
     if "EARTHQUAKE" in title_upper:
         disaster_type = "EARTHQUAKE"
@@ -263,6 +275,8 @@ def build_scenario_context(
         disaster_type = "CYCLONE"
     elif "LANDSLIDE" in title_upper:
         disaster_type = "LANDSLIDE"
+    elif scenario_id in canonical_scenario_hazards:
+        disaster_type = canonical_scenario_hazards[scenario_id]
     else:
         disaster_type = "FLOOD"
 
@@ -302,10 +316,19 @@ def build_scenario_context(
             }
         )
 
+    hazard_code = {
+        "FLOOD": "FL",
+        "EARTHQUAKE": "EQ",
+        "CYCLONE": "CY",
+        "LANDSLIDE": "LS",
+    }.get(disaster_type, "FL")
+    event_id = f"EVT-2026-{hazard_code}01"
+
     return {
         "scenario_id": scenario_id,
-        "event_id": "EVT-2026-FL01",
+        "event_id": event_id,
         "name": title,
+        "hazard": disaster_type,
         "disaster_type": disaster_type,
         "severity": "SEVERE",
         "severity_level": "SEVERE",

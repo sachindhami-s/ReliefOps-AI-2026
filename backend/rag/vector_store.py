@@ -16,7 +16,11 @@ class ChromaVectorStore:
     def __init__(self, persist_dir: Optional[str] = None, collection_name: str = "disaster_sops"):
         if persist_dir is None:
             base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            persist_dir = os.path.join(base_dir, "data", "chromadb")
+            env_path = os.getenv("CHROMADB_PATH", "").strip()
+            if env_path:
+                persist_dir = env_path if os.path.isabs(env_path) else os.path.join(base_dir, env_path)
+            else:
+                persist_dir = os.path.join(base_dir, "data", "chromadb")
 
         self.persist_dir = os.path.abspath(persist_dir)
         os.makedirs(self.persist_dir, exist_ok=True)

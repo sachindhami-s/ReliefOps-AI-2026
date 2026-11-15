@@ -103,7 +103,15 @@ class NeedsAssessmentAgent(BaseAgent):
             }
 
         event_id = disaster_context.get("event_id", "EVENT-UNKNOWN")
-        disaster_type = str(disaster_context.get("disaster_type", "FLOOD")).strip().upper()
+        prior_sop = self.read_section("sop_context") or {}
+        raw_hazard = (
+            disaster_context.get("disaster_type")
+            or disaster_context.get("hazard")
+            or prior_sop.get("hazard")
+            or prior_sop.get("disaster_type")
+            or "FLOOD"
+        )
+        disaster_type = str(raw_hazard).strip().upper()
         raw_severity = disaster_context.get("severity") or disaster_context.get("severity_level") or "Level 3"
         severity = str(raw_severity).strip()
         planning_days = max(1, _safe_int(disaster_context.get("planning_days"), default=1))
@@ -114,6 +122,7 @@ class NeedsAssessmentAgent(BaseAgent):
             return {
                 "status": "NO_ZONES",
                 "event_id": event_id,
+                "hazard": disaster_type,
                 "disaster_type": disaster_type,
                 "message": "Disaster context contains an empty zones list.",
                 "zones_assessed": 0,
@@ -129,9 +138,20 @@ class NeedsAssessmentAgent(BaseAgent):
         )
         try:
             sop_context = json.loads(raw_sop_json)
+            if isinstance(sop_context, dict):
+                sop_context["hazard"] = disaster_type
+                sop_context["disaster_type"] = disaster_type
         except Exception as e:
             self.log(f"Failed to parse SOP retrieval response: {e}", level="ERROR")
-            sop_context = {"status": "ERROR", "error": str(e), "sop_ids": [], "chunks": []}
+            sop_context = {
+                "status": "ERROR",
+                "hazard": disaster_type,
+                "disaster_type": disaster_type,
+                "severity": severity,
+                "error": str(e),
+                "sop_ids": [],
+                "chunks": [],
+            }
 
         # Write retrieved SOP context to Blackboard immediately
         self.write_section("sop_context", sop_context)
@@ -180,6 +200,7 @@ class NeedsAssessmentAgent(BaseAgent):
                 damage_lvl=damage_lvl,
                 medical_urgency=medical_urgency,
                 days=planning_days,
+                disaster_type=disaster_type,
             )
             demands_res = json.loads(demands_json)
             demands_data = demands_res.get("demands", {})
@@ -191,6 +212,7 @@ class NeedsAssessmentAgent(BaseAgent):
                 medical_urgency=medical_urgency,
                 population=population,
                 pop_max=regional_max_pop,
+                disaster_type=disaster_type,
             )
             zps_res = json.loads(zps_json)
 
@@ -239,6 +261,7 @@ class NeedsAssessmentAgent(BaseAgent):
         return {
             "status": "SUCCESS",
             "event_id": event_id,
+            "hazard": disaster_type,
             "disaster_type": disaster_type,
             "severity": severity,
             "planning_days": planning_days,
