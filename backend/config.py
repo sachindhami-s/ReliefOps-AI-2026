@@ -59,6 +59,17 @@ class Settings:
         except ValueError:
             self.SURVIVAL_FLOOR_RATIO = 0.30
 
+        # Geospatial Routing Configuration (Phase 12)
+        raw_routing_mode = os.getenv("ROUTING_MODE", "HAVERSINE_FALLBACK").strip().upper()
+        self.ROUTING_MODE: str = (
+            raw_routing_mode if raw_routing_mode in ("ROAD_NETWORK", "HAVERSINE_FALLBACK") else "HAVERSINE_FALLBACK"
+        )
+        self.OSRM_BASE_URL: str = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org").strip().rstrip("/")
+        try:
+            self.ROUTING_TIMEOUT_SECONDS: float = max(0.5, float(os.getenv("ROUTING_TIMEOUT_SECONDS", "5.0")))
+        except ValueError:
+            self.ROUTING_TIMEOUT_SECONDS = 5.0
+
         # Server / Host Configurations
         self.APP_HOST: str = os.getenv("STREAMLIT_SERVER_ADDRESS", "0.0.0.0")
         try:
@@ -94,6 +105,9 @@ class Settings:
             "LOG_LEVEL": self.LOG_LEVEL,
             "GINI_THRESHOLD": self.GINI_THRESHOLD,
             "SURVIVAL_FLOOR_RATIO": self.SURVIVAL_FLOOR_RATIO,
+            "ROUTING_MODE": self.ROUTING_MODE,
+            "OSRM_BASE_URL": self.OSRM_BASE_URL,
+            "ROUTING_TIMEOUT_SECONDS": self.ROUTING_TIMEOUT_SECONDS,
             "APP_HOST": self.APP_HOST,
             "APP_PORT": self.APP_PORT,
             "OPENAI_CONFIGURED": bool(self.OPENAI_API_KEY),

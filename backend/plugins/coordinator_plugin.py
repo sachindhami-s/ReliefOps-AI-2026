@@ -313,6 +313,8 @@ class CoordinatorPlugin:
                         total_allocated_for_resource += fulfill_qty
 
                         wm = warehouse_meta.get(wid, {})
+                        eff_km = float(route.get("effective_km", 50.0))
+                        r_status = route.get("road_status") or zm.get("road_status", "OPEN")
                         dispatches.append(
                             {
                                 "zone_id": zid,
@@ -323,9 +325,19 @@ class CoordinatorPlugin:
                                 "requested_qty": req_qty,
                                 "allocated_qty": fulfill_qty,
                                 "unfulfilled_qty": max(0, req_qty - needed),
-                                "distance_km": route.get("effective_km", 50.0),
-                                "est_transit_hours": route.get("estimated_transit_hours", 2.0),
-                                "road_status": route.get("road_status") or zm.get("road_status", "OPEN"),
+                                "distance_km": eff_km,
+                                "road_distance_km": float(route.get("road_distance_km", eff_km)),
+                                "est_transit_hours": float(route.get("estimated_transit_hours", 2.0)),
+                                "estimated_duration_minutes": float(route.get("estimated_duration_minutes", round(float(route.get("estimated_transit_hours", 2.0)) * 60.0, 1))),
+                                "road_status": r_status,
+                                "route_available": bool(route.get("route_available", str(r_status).upper() != "BLOCKED")),
+                                "blocked_indicator": bool(route.get("blocked_indicator", str(r_status).upper() == "BLOCKED")),
+                                "aerial_delivery_required": bool(route.get("aerial_delivery_required", str(r_status).upper() in ("BLOCKED", "AIR_ONLY"))),
+                                "route_geometry": route.get("route_geometry", []),
+                                "routing_method": route.get("routing_method", "HAVERSINE_FALLBACK"),
+                                "routing_source": route.get("routing_source", "Haversine Formula (Wt=1.35)"),
+                                "fallback_used": bool(route.get("fallback_used", False)),
+                                "fallback_reason": route.get("fallback_reason"),
                                 "source_lat": wm.get("lat"),
                                 "source_lon": wm.get("lon"),
                                 "target_lat": zm.get("lat"),

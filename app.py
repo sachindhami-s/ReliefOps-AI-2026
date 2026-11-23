@@ -23,6 +23,7 @@ import streamlit as st
 
 from backend.agents.relief_coordinator import ReliefCoordinator
 from backend.blackboard.blackboard_manager import BlackboardManager
+from backend.config import settings
 from backend.database.db_manager import DatabaseManager, default_db_manager
 from backend.database.seeder import build_scenario_context, seed_database
 from backend.rag import default_sop_retriever
@@ -441,8 +442,21 @@ def build_gis_layers_data(
                 "target_lat": float(t_lat),
                 "target_lon": float(t_lon),
                 "distance_km": float(d.get("distance_km", 0.0)),
+                "road_distance_km": float(d.get("road_distance_km", d.get("distance_km", 0.0))),
                 "est_transit_hours": float(d.get("est_transit_hours", 0.0)),
                 "road_status": road_st,
+                "route_available": bool(d.get("route_available", road_st != "BLOCKED")),
+                "blocked_indicator": bool(d.get("blocked_indicator", road_st == "BLOCKED")),
+                "aerial_delivery_required": bool(d.get("aerial_delivery_required", road_st in ("BLOCKED", "AIR_ONLY"))),
+                "routing_method": str(d.get("routing_method") or "HAVERSINE_FALLBACK"),
+                "routing_source": str(d.get("routing_source") or "Haversine Formula (Wt=1.35)"),
+                "fallback_used": bool(d.get("fallback_used", False)),
+                "fallback_reason": d.get("fallback_reason"),
+                "path": (
+                    d.get("route_geometry")
+                    if isinstance(d.get("route_geometry"), list) and len(d.get("route_geometry")) >= 2
+                    else [[float(s_lon), float(s_lat)], [float(t_lon), float(t_lat)]]
+                ),
                 "cargo_items": [],
                 "source_color": src_col,
                 "target_color": tgt_col,
@@ -452,16 +466,31 @@ def build_gis_layers_data(
     route_rows: List[Dict[str, Any]] = []
     for c in corridors.values():
         cargo_str = " | ".join(c["cargo_items"])
+        avail_label = "BLOCKED (Aerial Req.)" if c["blocked_indicator"] else ("AIR_ONLY" if c["road_status"] == "AIR_ONLY" else "AVAILABLE")
         route_rows.append(
             {
                 "name": f"Route: {c['warehouse_name']} -> {c['zone_name']}",
-                "type": f"DISPATCH CORRIDOR ({c['road_status']})",
-                "details": f"Dist: {c['distance_km']:.1f} km | ETA: {c['est_transit_hours']:.1f} hrs | Cargo: {cargo_str}",
+                "type": f"DISPATCH CORRIDOR ({c['road_status']} | {c['routing_method']})",
+                "details": (
+                    f"Dist: {c['road_distance_km']:.1f} km | ETA: {c['est_transit_hours']:.1f} hrs | "
+                    f"Method: {c['routing_method']} | Status: {avail_label} | Cargo: {cargo_str}"
+                ),
                 "warehouse_name": c["warehouse_name"],
                 "zone_name": c["zone_name"],
                 "road_status": c["road_status"],
+                "route_available": c["route_available"],
+                "route_availability_label": avail_label,
+                "blocked_indicator": c["blocked_indicator"],
+                "aerial_delivery_required": c["aerial_delivery_required"],
                 "distance_km": c["distance_km"],
+                "road_distance_km": c["road_distance_km"],
                 "est_transit_hours": c["est_transit_hours"],
+                "routing_method": c["routing_method"],
+                "routing_source": c["routing_source"],
+                "fallback_used": c["fallback_used"],
+                "fallback_reason": c["fallback_reason"],
+                "path": c["path"],
+                "has_road_geometry": len(c["path"]) > 2 and c["routing_method"] == "ROAD_NETWORK",
                 "cargo_manifest": cargo_str,
                 "source_lat": c["source_lat"],
                 "source_lon": c["source_lon"],
@@ -945,6 +974,25 @@ def render_dashboard() -> None:
         help="Defines calculation window for food packs (3-day cycles) and daily clean water rations.",
     )
 
+    routing_modes = ["HAVERSINE_FALLBACK", "ROAD_NETWORK"]
+    default_routing_mode = settings.ROUTING_MODE if settings.ROUTING_MODE in routing_modes else "HAVERSINE_FALLBACK"
+    selected_routing_mode = st.sidebar.selectbox(
+        "Logistics Routing Engine",
+        routing_modes,
+        index=routing_modes.index(default_routing_mode),
+        help=(
+            "HAVERSINE_FALLBACK: Deterministic offline great-circle distance (Wt=1.35). "
+            "ROAD_NETWORK: OpenStreetMap/OSRM real road-network routing with automatic Haversine fallback."
+        ),
+    )
+    osrm_service_url = settings.OSRM_BASE_URL
+    if selected_routing_mode == "ROAD_NETWORK":
+        osrm_service_url = st.sidebar.text_input(
+            "OSRM Routing Service URL",
+            value=settings.OSRM_BASE_URL,
+            help="OpenStreetMap OSRM-compatible v1 routing endpoint (falls back to Haversine if unreachable).",
+        ).strip() or settings.OSRM_BASE_URL
+
     st.sidebar.subheader("📍 Affected Geographical Zones")
     initial_df_rows = []
     for z in default_active_zones:
@@ -1052,6 +1100,8 @@ def render_dashboard() -> None:
         "severity": severity_level,
         "severity_level": severity_level,
         "planning_days": planning_days,
+        "routing_mode": selected_routing_mode,
+        "osrm_base_url": osrm_service_url,
         "zones": zones_payload,
     }
 
@@ -1406,13 +1456,44 @@ def render_dashboard() -> None:
     def render_module_3_gis_command_map() -> None:
         st.subheader("3. Spatial GIS Command Map — Depots, Disaster Sectors & Dispatch Corridors")
         st.caption(
-            "Geospatial operational picture built strictly from authentic database coordinates for regional warehouses and affected zones."
+            "Geospatial operational picture built from authentic database coordinates for regional warehouses and affected zones, "
+            "supporting optional OpenStreetMap/OSRM road-network geometry with deterministic Haversine fallback."
         )
 
         gis_data = build_gis_layers_data(zone_needs=zone_needs, inv_snap=inv_snap, dispatches=dispatches)
         wh_points = gis_data["warehouse_points"]
         zone_points = gis_data["zone_points"]
         route_rows = gis_data["route_rows"]
+
+        log_mat = bb_snap.get("logistics_matrix") or {}
+        routing_sum = plan.get("routing_summary") or log_mat.get("routing_summary") or {}
+        req_mode = routing_sum.get("routing_mode_requested", selected_routing_mode)
+        active_method = routing_sum.get("active_routing_method", req_mode)
+        road_cnt = int(routing_sum.get("road_network_routes", sum(1 for r in route_rows if r.get("routing_method") == "ROAD_NETWORK")))
+        fb_cnt = int(routing_sum.get("fallback_routes", sum(1 for r in route_rows if r.get("fallback_used"))))
+        blocked_cnt = sum(1 for r in route_rows if r.get("blocked_indicator"))
+
+        rm1, rm2, rm3, rm4 = st.columns(4)
+        rm1.metric("Requested Routing Mode", req_mode)
+        rm2.metric("Active Routing Method", active_method)
+        rm3.metric("Road-Network / Fallback", f"{road_cnt} / {fb_cnt}")
+        rm4.metric("Blocked Corridors", str(blocked_cnt))
+
+        if active_method == "ROAD_NETWORK" or road_cnt > 0:
+            st.info(
+                "🛣️ **OpenStreetMap / OSRM Road-Network Routing Active:** Road geometry and nominal travel times come from the configured OSRM service. "
+                "Road-status flags (`OPEN`, `DEGRADED`, `BLOCKED`) reflect scenario/field reports — OpenStreetMap does not supply verified real-time disaster road closures."
+            )
+        elif req_mode == "ROAD_NETWORK" and fb_cnt > 0:
+            st.warning(
+                "⚠️ **Automatic Haversine Fallback Activated:** The external OSRM routing service was unavailable or timed out for one or more corridors. "
+                "ReliefOps AI seamlessly fell back to Haversine great-circle estimation (`Wt=1.35`) without interrupting dispatch planning."
+            )
+        else:
+            st.caption(
+                "🧭 **Active Routing Engine:** `HAVERSINE_FALLBACK` (deterministic offline great-circle distance × 1.35 terrain tortuosity). "
+                "Switch **Logistics Routing Engine** to `ROAD_NETWORK` in the sidebar to query OpenStreetMap/OSRM road geometry."
+            )
 
         g_ctrl1, g_ctrl2, g_ctrl3, g_ctrl4 = st.columns(4)
         show_wh = g_ctrl1.checkbox("Show Regional Depots", value=True, key="gis_show_wh")
@@ -1429,30 +1510,76 @@ def render_dashboard() -> None:
             deck_layers = []
 
             if show_routes and route_rows:
-                routes_df = pd.DataFrame(route_rows)
-                line_layer = pdk.Layer(
-                    "LineLayer",
-                    data=routes_df,
-                    get_source_position=["source_lon", "source_lat"],
-                    get_target_position=["target_lon", "target_lat"],
-                    get_color="source_color",
-                    get_width=5,
-                    width_min_pixels=3,
-                    pickable=True,
-                    auto_highlight=True,
-                )
-                arc_layer = pdk.Layer(
-                    "ArcLayer",
-                    data=routes_df,
-                    get_source_position=["source_lon", "source_lat"],
-                    get_target_position=["target_lon", "target_lat"],
-                    get_source_color="source_color",
-                    get_target_color="target_color",
-                    get_width=4,
-                    pickable=True,
-                    auto_highlight=True,
-                )
-                deck_layers.extend([line_layer, arc_layer])
+                road_geom_rows = [r for r in route_rows if r.get("has_road_geometry")]
+                straight_rows = [r for r in route_rows if not r.get("has_road_geometry")]
+
+                if road_geom_rows:
+                    path_layer = pdk.Layer(
+                        "PathLayer",
+                        data=pd.DataFrame(road_geom_rows),
+                        get_path="path",
+                        get_color="source_color",
+                        width_scale=20,
+                        width_min_pixels=4,
+                        pickable=True,
+                        auto_highlight=True,
+                    )
+                    deck_layers.append(path_layer)
+
+                if straight_rows:
+                    routes_df = pd.DataFrame(straight_rows)
+                    line_layer = pdk.Layer(
+                        "LineLayer",
+                        data=routes_df,
+                        get_source_position=["source_lon", "source_lat"],
+                        get_target_position=["target_lon", "target_lat"],
+                        get_color="source_color",
+                        get_width=5,
+                        width_min_pixels=3,
+                        pickable=True,
+                        auto_highlight=True,
+                    )
+                    arc_layer = pdk.Layer(
+                        "ArcLayer",
+                        data=routes_df,
+                        get_source_position=["source_lon", "source_lat"],
+                        get_target_position=["target_lon", "target_lat"],
+                        get_source_color="source_color",
+                        get_target_color="target_color",
+                        get_width=4,
+                        pickable=True,
+                        auto_highlight=True,
+                    )
+                    deck_layers.extend([line_layer, arc_layer])
+
+                # Highlight blocked road destinations with explicit alert rings
+                blocked_targets = [
+                    {
+                        "name": f"BLOCKED ROAD ALERT: {r['zone_name']}",
+                        "type": "BLOCKED ROUTE INDICATOR (Aerial Delivery Required)",
+                        "details": f"Origin: {r['warehouse_name']} | Dist: {r['road_distance_km']:.1f} km | Method: {r['routing_method']}",
+                        "lat": r["target_lat"],
+                        "lon": r["target_lon"],
+                        "color": [239, 68, 68, 120],
+                        "radius": 22000,
+                    }
+                    for r in route_rows
+                    if r.get("blocked_indicator")
+                ]
+                if blocked_targets:
+                    deck_layers.append(
+                        pdk.Layer(
+                            "ScatterplotLayer",
+                            data=pd.DataFrame(blocked_targets),
+                            get_position=["lon", "lat"],
+                            get_color="color",
+                            get_radius="radius",
+                            stroked=True,
+                            get_line_color=[239, 68, 68, 255],
+                            line_width_min_pixels=2,
+                            pickable=True,
+                        )
+                    )
 
             scatter_layer = pdk.Layer(
                 "ScatterplotLayer",
@@ -1474,20 +1601,24 @@ def render_dashboard() -> None:
             )
             st.caption(
                 "🟢 **Emerald Markers**: Operational Warehouse Depots | "
-                "🔵/🟠/🔴 **Sector Markers**: Affected Disaster Zones (scaled by ZPS & colored by road access/severity) | "
-                "🌈 **Arcs**: Active Warehouse-to-Zone Supply Corridors"
+                "🔵/🟠/🔴 **Sector Markers**: Affected Disaster Zones (red outer ring = `BLOCKED` road alert) | "
+                "🛣️ **Polylines / Arcs**: Road-Network Polylines (`ROAD_NETWORK`) or Haversine Corridors (`HAVERSINE_FALLBACK`)"
             )
 
             if route_rows:
-                st.markdown("##### Active Logistics Dispatch Corridors & Transit ETAs")
+                st.markdown("##### Active Logistics Dispatch Corridors, Routing Method & Transit ETAs")
                 corridor_df = pd.DataFrame(
                     [
                         {
                             "Origin Warehouse": r["warehouse_name"],
                             "Destination Sector": r["zone_name"],
                             "Road Condition": r["road_status"],
-                            "Effective Distance (km)": f"{r['distance_km']:.1f}",
-                            "Est. Transit Time (hrs)": f"{r['est_transit_hours']:.1f}",
+                            "Route Availability": r["route_availability_label"],
+                            "Distance (km)": f"{r['road_distance_km']:.1f}",
+                            "Est. Travel Time (hrs)": f"{r['est_transit_hours']:.1f}",
+                            "Routing Method": r["routing_method"],
+                            "Routing Source": r["routing_source"],
+                            "Fallback Used": "Yes" if r["fallback_used"] else "No",
                             "Dispatched Cargo Manifest": r["cargo_manifest"],
                         }
                         for r in route_rows

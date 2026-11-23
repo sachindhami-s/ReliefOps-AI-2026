@@ -82,15 +82,18 @@ graph TD
   - Performs feasibility checks: compares requested aggregate demand against depot capacity.
   - Flags resource deficits (`ADEQUATE`, `SHORTAGE`, `CRITICAL_SHORTAGE`) and logs stock depletion rates.
 
-### 4. Logistics Agent (`backend/agents/logistics_agent.py`)
-- **Role:** Spatial distance calculation, transit time estimation, and route accessibility routing.
-- **Responsibilities:**
-  - Computes exact great-circle geodesic distances between warehouse coordinates and disaster zones using the **Haversine formula**:
-    $$d = 2R \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta \phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta \lambda}{2}\right)}\right)$$
-  - Adjusts transit speeds based on road network status:
-    - `OPEN`: $45\text{ km/h}$ standard relief convoy speed.
-    - `DEGRADED`: $25\text{ km/h}$ reduced convoy speed (flooded or damaged corridors).
-    - `BLOCKED`: Infinite transit time via ground; triggers `AERIAL_AIRDROP_REQUIRED` flag.
+### 4. Logistics Agent (`backend/agents/logistics_agent.py` & `backend/plugins/logistics_plugin.py`)
+- **Role:** Real-world road-network geospatial routing (OpenStreetMap/OSRM), Haversine fallback distance calculation, transit time estimation, and route accessibility modeling (upgraded in Phase 12).
+- **Configurable Routing Modes (`ROUTING_MODE`):**
+  1. **`ROAD_NETWORK`:** Queries an OpenStreetMap-compatible OSRM v1 endpoint (`OSRM_BASE_URL`, default `https://router.project-osrm.org`) for driving road distance, nominal free-flow duration, and GeoJSON polyline geometry (`route_geometry`), with in-memory coordinate caching and configurable timeouts (`ROUTING_TIMEOUT_SECONDS`).
+  2. **`HAVERSINE_FALLBACK` (Default Offline Mode):** Computes great-circle geodesic distance scaled by terrain tortuosity ($W_t = 1.35$) using the **Haversine formula**:
+     $$d = 2R \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta \phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta \lambda}{2}\right)}\right)$$
+  - If `ROAD_NETWORK` times out, encounters HTTP/network errors, or returns no route, `LogisticsPlugin` automatically degrades to `HAVERSINE_FALLBACK` and records `fallback_used = True`, `fallback_reason`, and `routing_source`.
+- **Road-Status Impedance (Field/Scenario Inputs — Not Live OSM Closures):**
+  - `OPEN`: `1.0×` baseline travel speed (`45 km/h` Haversine fallback; `1.0×` OSRM nominal duration), `route_available = True`.
+  - `DEGRADED`: `0.5×` speed (`22.5 km/h` Haversine fallback; `2.0×` OSRM nominal duration), `route_available = True`.
+  - `BLOCKED`: `route_available = False`, `blocked_indicator = True`, `aerial_delivery_required = True`, heavily penalized ground transit multiplier (`0.15×`).
+  - `AIR_ONLY`: Bypasses road network via direct aerial corridor (`90 km/h`, `aerial_delivery_required = True`).
 
 ### 5. Fairness Auditor Agent (`backend/agents/fairness_auditor_agent.py`)
 - **Role:** Distributive justice validation and algorithmic gatekeeper.

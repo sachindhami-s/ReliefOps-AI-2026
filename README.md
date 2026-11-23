@@ -2,9 +2,9 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests Passing](https://img.shields.io/badge/tests-139%20passed-success.svg)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-149%20passed-success.svg)](tests/)
 [![Architecture](https://img.shields.io/badge/architecture-Hayes--Roth%20Blackboard-orange.svg)](docs/SYSTEM_ARCHITECTURE.md)
-[![Validation](https://img.shields.io/badge/phase%2011-docker%20verified%20%26%20validated-brightgreen.svg)](PHASE11_DEPLOYMENT_REPORT.md)
+[![Validation](https://img.shields.io/badge/phase%2012-OSRM%20routing%20%26%20docker%20verified-brightgreen.svg)](PHASE12_ROUTING_IMPLEMENTATION_REPORT.md)
 
 > **Academic Project Charter:** Developed exclusively for **CSE476 — Agentic AI and Intelligent Automation**.  
 > **Topic:** Autonomous Multi-Agent Resource Allocation, RAG SOP Retrieval, Distributive Justice Auditing, Mid-Run Dynamic Re-Planning, and Emergency Operations Command Dashboard.
@@ -67,7 +67,7 @@ The Streamlit Command Center provides **9 integrated operational modules** acces
 
 1. **Executive Overview:** Real-time mission command KPI cards (Total Affected Population, Displaced Population, Active Incident & SOP Reference, Total Resources Demanded, Total Resources Allocated, Critical Resource Shortages, Latest Allocation Plan ID, and Overall Fairness Gini Score), plus Sector Priority & Demand Matrix and ZPS Bar Chart.
 2. **Disaster Monitoring:** Supports all 4 canonical hazards (`FLOOD`, `EARTHQUAKE`, `CYCLONE`, `LANDSLIDE`), hazard-specific SOP Section 2 severity scales, displacement metrics, zone-level damage/vulnerability/access telemetry, and governing SOP references (`SOP-FL-001`, `SOP-EQ-002`, `SOP-CY-004`, `SOP-LS-003`).
-3. **GIS Command Map:** Interactive 2D/3D PyDeck geospatial command map built strictly from authentic database coordinates (`affected_zones` and `warehouses`), rendering depot markers, ZPS-scaled disaster sector markers, and color-coded warehouse-to-zone dispatch corridors (`ArcLayer` + `LineLayer`).
+3. **GIS Command Map:** Interactive 2D/3D PyDeck geospatial command map built strictly from authentic database coordinates (`affected_zones` and `warehouses`), supporting **Phase 12 OpenStreetMap/OSRM `ROAD_NETWORK` routing** (`PathLayer` polylines, road distance, duration, blocked-corridor rings, and routing method metadata) with automatic **`HAVERSINE_FALLBACK`** (`ArcLayer` + `LineLayer`).
 4. **Resource Management:** Independent tracking of `FOOD_RATIONS`, `CLEAN_WATER`, `MEDICAL_KITS`, and `SHELTER_TENTS` across Total Demanded, Total Available, Total Allocated, Fulfillment Percentage (capped at `100.0%`), Unfulfilled Shortage, and Surplus Inventory, alongside regional warehouse stock tables.
 5. **AI Allocation Engine:** Synthesizes multi-depot shipment schedules via **Two-Phase Water-Filling** (Phase 1: 30% minimum survival floor; Phase 2: ZPS-proportional residual allocation), providing Zone-Wise Coverage tables, Warehouse-Wise Outbound Summaries, and CSV manifest export.
 6. **Fairness Analytics:** Evaluates **Dimension A (Distributive Fairness, Gini $\le 0.35$)** independently from **Dimension B (Resource Adequacy)**, benchmarking ReliefOps AI against a **Naive Greedy Policy** with an interactive empirical **Lorenz Curve Comparison Chart**.
@@ -143,23 +143,26 @@ Open **`http://localhost:8501`** in your browser. See [DEPLOYMENT.md](DEPLOYMENT
 
 ---
 
-## 5. Automated Verification, Stress Benchmarks & Test Suite (`139` Tests)
+## 5. Automated Verification, Stress Benchmarks & Test Suite (`149` Tests)
 
 ```bash
 # 1. Single-file & full-project Python bytecode compilation
 python -m py_compile app.py
 python -m compileall -q backend app.py demo_pipeline.py docker_entrypoint.py tests
 
-# 2. Execute complete automated test suite (139 tests across Phases 1–10 + Phase 11 validation)
+# 2. Execute complete automated test suite (149 tests across Phases 1–12)
 pytest -q
 
-# 3. Execute Phase 9 End-to-End Integration & 500-Zone Stress Suite
+# 3. Execute Phase 12 Geospatial Routing (OSRM & Haversine Fallback) Suite
+pytest -v tests/test_phase12_geospatial_routing.py
+
+# 4. Execute Phase 9 End-to-End Integration & 500-Zone Stress Suite
 pytest -v tests/test_phase9_end_to_end_validation.py
 
-# 4. Execute Phase 8 Command Dashboard & Streamlit AppTest Suite
+# 5. Execute Phase 8 Command Dashboard & Streamlit AppTest Suite
 pytest -v tests/test_command_dashboard.py
 
-# 5. Execute Phase 10 Dockerization & Non-Destructive Entrypoint Suite
+# 6. Execute Phase 10 Dockerization & Non-Destructive Entrypoint Suite
 pytest -v tests/test_phase10_deployment_dockerization.py
 ```
 

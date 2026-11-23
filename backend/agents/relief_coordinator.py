@@ -37,11 +37,13 @@ class ReliefCoordinator(BaseAgent):
         blackboard: Optional[Any] = None,
         plugin: Optional[CoordinatorPlugin] = None,
         db: Optional[DatabaseManager] = None,
+        logistics_plugin: Optional[Any] = None,
     ):
         super().__init__(name=name, kernel=kernel, blackboard=blackboard)
         self.plugin = plugin or CoordinatorPlugin()
         self._db = db or default_db_manager
         self._inv_plugin = InventoryPlugin(db=self._db)
+        self._logistics_plugin = logistics_plugin
 
         if "Coordinator" not in self.kernel.plugins:
             self.kernel.add_plugin(self.plugin, plugin_name="Coordinator")
@@ -90,7 +92,14 @@ class ReliefCoordinator(BaseAgent):
             else (prior_hazard or "FLOOD")
         )
         disaster_type = str(raw_hazard).strip().upper()
+        # Preserve active routing config across dynamic re-planning cycles
+        prior_routing_mode = prior_ctx.get("routing_mode")
+        prior_osrm_url = prior_ctx.get("osrm_base_url")
         if disaster_context is not None and isinstance(disaster_context, dict):
+            if "routing_mode" not in disaster_context and prior_routing_mode:
+                disaster_context["routing_mode"] = prior_routing_mode
+            if "osrm_base_url" not in disaster_context and prior_osrm_url:
+                disaster_context["osrm_base_url"] = prior_osrm_url
             disaster_context["disaster_type"] = disaster_type
             disaster_context["hazard"] = disaster_type
             self.write_section("disaster_context", disaster_context)
@@ -163,9 +172,13 @@ class ReliefCoordinator(BaseAgent):
         inv_agent = InventoryAgent(kernel=self.kernel, blackboard=self.blackboard, plugin=self._inv_plugin)
         inv_agent.execute()
 
-        # 3. Logistics Agent
-        log_agent = LogisticsAgent(kernel=self.kernel, blackboard=self.blackboard)
-        log_agent.execute()
+        # 3. Logistics Agent (Phase 12: supports ROAD_NETWORK + HAVERSINE_FALLBACK)
+        log_agent = LogisticsAgent(
+            kernel=self.kernel,
+            blackboard=self.blackboard,
+            plugin=self._logistics_plugin,
+        )
+        log_agent.execute(disaster_context)
 
         # 4. Synthesis & Audit Revision Loop
         fairness_agent = FairnessAuditorAgent(kernel=self.kernel, blackboard=self.blackboard, db=self._db)
@@ -377,6 +390,13 @@ class ReliefCoordinator(BaseAgent):
             f"to all eligible administrative sectors without starving peripheral or cut-off communities."
         )
 
+        log_matrix_final = self.read_section("logistics_matrix") or {}
+        routing_summary = log_matrix_final.get("routing_summary") or {
+            "routing_mode_requested": log_matrix_final.get("routing_mode_requested", "HAVERSINE_FALLBACK"),
+            "active_routing_method": log_matrix_final.get("active_routing_method", "HAVERSINE_FALLBACK"),
+            "fallback_used": bool(log_matrix_final.get("fallback_used", False)),
+        }
+
         final_plan = {
             "plan_id": plan_id,
             "scenario_id": disaster_context.get("scenario_id") if disaster_context else None,
@@ -396,6 +416,7 @@ class ReliefCoordinator(BaseAgent):
             "shortage_warnings": audit_verdict.get("shortage_warnings", []) if audit_verdict else [],
             "dispatches": dispatches,
             "total_dispatches": len(dispatches),
+            "routing_summary": routing_summary,
             "decision_audit_trail": decision_audit_trail,
         }
         self.write_section("final_allocation_plan", final_plan)
