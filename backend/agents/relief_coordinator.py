@@ -202,13 +202,16 @@ class ReliefCoordinator(BaseAgent):
             }
             self.write_section("allocation_draft", allocation_draft)
 
-            # Record plan in AUDITING state so audit logs can link to it
+            # Record plan in AUDITING state via non-destructive UPSERT so audit_logs FK is preserved
             now_iter = datetime.datetime.now(datetime.timezone.utc).isoformat()
             try:
                 self._db.execute_non_query(
                     """
-                    INSERT OR REPLACE INTO allocation_plans (plan_id, event_id, iteration, status, created_at)
+                    INSERT INTO allocation_plans (plan_id, event_id, iteration, status, created_at)
                     VALUES (?, ?, ?, 'AUDITING', ?)
+                    ON CONFLICT(plan_id) DO UPDATE SET
+                        iteration = excluded.iteration,
+                        status = 'AUDITING'
                     """,
                     (plan_id, event_id, iteration, now_iter),
                 )
@@ -244,13 +247,19 @@ class ReliefCoordinator(BaseAgent):
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         dispatches = allocation_draft.get("dispatches", []) if allocation_draft else []
 
-        # Persist Plan to SQLite in an ATOMIC transaction (rolls back on failure)
+        # Persist Plan to SQLite in an ATOMIC transaction (UPSERT avoids ON DELETE CASCADE wiping audit_logs)
         try:
             with self._db.transaction() as cur:
                 cur.execute(
                     """
-                    INSERT OR REPLACE INTO allocation_plans (plan_id, event_id, iteration, status, fairness_score, approved_by, created_at, approved_at)
+                    INSERT INTO allocation_plans (plan_id, event_id, iteration, status, fairness_score, approved_by, created_at, approved_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(plan_id) DO UPDATE SET
+                        iteration = excluded.iteration,
+                        status = excluded.status,
+                        fairness_score = excluded.fairness_score,
+                        approved_by = excluded.approved_by,
+                        approved_at = excluded.approved_at
                     """,
                     (
                         plan_id,

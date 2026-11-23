@@ -34,15 +34,15 @@ ReliefOps AI is engineered to be deployed as an autonomous, self-contained multi
 
 ---
 
-## 2. Docker & Containerized Deployment (Recommended)
+## 2. Docker & Containerized Deployment (Recommended — Verified in Phase 11)
 
-Containerization guarantees 100% reproducible execution across Linux, macOS, and Windows server environments.
+Containerization guarantees 100% reproducible execution across Linux, macOS, and Windows (Docker Desktop + WSL 2 Linux engine) environments.
 
 ### Step 1: Clone and Configure Environment
 
 ```bash
-git clone https://github.com/your-username/reliefops-ai.git
-cd reliefops-ai
+git clone https://github.com/sachindhami-s/ReliefOps-AI-2026.git
+cd ReliefOps-AI-2026
 cp .env.example .env
 ```
 
@@ -60,24 +60,38 @@ STREAMLIT_SERVER_ADDRESS=0.0.0.0
 STREAMLIT_SERVER_HEADLESS=true
 ```
 
-### Step 2: Build and Launch Container
+### Step 2: Build and Launch Container (Docker Compose v2)
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
+
+> **Non-Destructive Startup Guarantee (`docker_entrypoint.py`):** On container startup, `/app/docker-entrypoint.sh` verifies `./data/reliefops.db` and `./data/chromadb/` non-destructively. Existing SQLite databases and ChromaDB collections (`64` SOP chunks) are preserved untouched without reseeding. Cold initialization only runs when `/app/data/reliefops.db` does not exist or ChromaDB has `0` chunks.
 
 ### Step 3: Verify Container Health & Status
 
 ```bash
-# Check container status
-docker ps
+# Check container status (expected: Up ... (healthy))
+docker ps --filter name=reliefops-ai-service
 
-# Check HTTP healthcheck endpoint
+# Check HTTP healthcheck endpoint (expected: ok, HTTP 200)
 curl -f http://localhost:8501/_stcore/health
 
-# Inspect real-time structured logs
-docker-compose logs -f
+# Inspect non-destructive startup & Streamlit logs
+docker compose logs -f
 ```
+
+### Step 4: Safe Stop & Restart (Preserve Persistent Data)
+
+```bash
+# Stop without deleting persistent volumes or data
+docker compose stop
+
+# Restart while preserving SQLite and ChromaDB data
+docker compose start
+```
+
+> **Warning:** Never run `docker compose down -v` on an environment holding active database records without first running an online SQLite hot backup (`Section 4`). See `DOCKER_TROUBLESHOOTING.md` and `PHASE11_DEPLOYMENT_REPORT.md` for Windows Docker Desktop guidance and live verification benchmarks.
 
 ---
 
@@ -88,7 +102,7 @@ For bare-metal or VM deployments (e.g., Ubuntu 22.04 LTS):
 ### 1. Create Dedicated Service User
 ```bash
 sudo useradd -r -s /bin/false -m -d /opt/reliefops reliefops
-sudo git clone https://github.com/your-username/reliefops-ai.git /opt/reliefops/app
+sudo git clone https://github.com/sachindhami-s/ReliefOps-AI-2026.git /opt/reliefops/app
 sudo chown -R reliefops:reliefops /opt/reliefops/app
 ```
 

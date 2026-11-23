@@ -71,3 +71,14 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Academic Presentations, Reports & Slide Generation Artifacts (Not Needed in Runtime Image)
+*.pptx
+*.pdf
+*.docx
+presentation/
+presentation_assets/
+reports/
+generate_presentation.py
+generate_revised_presentation.py
+PRESENTATION_CHANGELOG.md

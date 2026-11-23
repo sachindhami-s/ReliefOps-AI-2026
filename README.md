@@ -2,9 +2,9 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests Passing](https://img.shields.io/badge/tests-133%20passed-success.svg)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-139%20passed-success.svg)](tests/)
 [![Architecture](https://img.shields.io/badge/architecture-Hayes--Roth%20Blackboard-orange.svg)](docs/SYSTEM_ARCHITECTURE.md)
-[![Validation](https://img.shields.io/badge/phase%209-validated%20%26%20stress--tested-brightgreen.svg)](docs/TESTING_AND_VALIDATION.md)
+[![Validation](https://img.shields.io/badge/phase%2011-docker%20verified%20%26%20validated-brightgreen.svg)](PHASE11_DEPLOYMENT_REPORT.md)
 
 > **Academic Project Charter:** Developed exclusively for **CSE476 — Agentic AI and Intelligent Automation**.  
 > **Topic:** Autonomous Multi-Agent Resource Allocation, RAG SOP Retrieval, Distributive Justice Auditing, Mid-Run Dynamic Re-Planning, and Emergency Operations Command Dashboard.
@@ -129,16 +129,28 @@ Once started, open **`http://localhost:8501`** in your browser.
 python demo_pipeline.py --all
 ```
 
+### Docker Compose Startup (Phase 11 Verified)
+
+```bash
+# Build and launch ReliefOps AI in a non-root Linux container (preserves ./data/reliefops.db & ./data/chromadb)
+docker compose up --build -d
+
+# Verify healthcheck (expected: ok)
+curl -f http://localhost:8501/_stcore/health
+```
+
+Open **`http://localhost:8501`** in your browser. See [DEPLOYMENT.md](DEPLOYMENT.md), [PHASE11_DEPLOYMENT_REPORT.md](PHASE11_DEPLOYMENT_REPORT.md), [PHASE11_TESTING_REPORT.md](PHASE11_TESTING_REPORT.md), and [DOCKER_TROUBLESHOOTING.md](DOCKER_TROUBLESHOOTING.md) for verified container benchmarks, persistence testing, and Windows Docker Desktop setup.
+
 ---
 
-## 5. Automated Verification, Stress Benchmarks & Test Suite (`133` Tests)
+## 5. Automated Verification, Stress Benchmarks & Test Suite (`139` Tests)
 
 ```bash
 # 1. Single-file & full-project Python bytecode compilation
 python -m py_compile app.py
-python -m compileall -q backend app.py demo_pipeline.py tests
+python -m compileall -q backend app.py demo_pipeline.py docker_entrypoint.py tests
 
-# 2. Execute complete automated test suite (133 tests across Phases 1–9)
+# 2. Execute complete automated test suite (139 tests across Phases 1–10 + Phase 11 validation)
 pytest -q
 
 # 3. Execute Phase 9 End-to-End Integration & 500-Zone Stress Suite
@@ -146,6 +158,9 @@ pytest -v tests/test_phase9_end_to_end_validation.py
 
 # 4. Execute Phase 8 Command Dashboard & Streamlit AppTest Suite
 pytest -v tests/test_command_dashboard.py
+
+# 5. Execute Phase 10 Dockerization & Non-Destructive Entrypoint Suite
+pytest -v tests/test_phase10_deployment_dockerization.py
 ```
 
 ### Phase 9 Scalability Benchmarks (10 to 500 Disaster Zones)

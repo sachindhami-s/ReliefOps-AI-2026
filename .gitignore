@@ -54,6 +54,7 @@ data/chromadb/
 data/*.db
 data/*.db-*
 data/backup_*/
+data/backups/
 
 # ChromaDB generated storage
 data/chromadb/
